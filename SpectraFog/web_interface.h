@@ -1,0 +1,594 @@
+// ============================================================
+// Web Interface HTML/CSS/JS
+// ============================================================
+
+#ifndef WEB_INTERFACE_H
+#define WEB_INTERFACE_H
+
+const char WEB_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SpectraFog</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: monospace;
+        background: #1e1e2e;
+        color: #cdd6f4;
+        overflow: hidden;
+        height: 100vh;
+      }
+      .container {
+        display: flex;
+        height: 100vh;
+      }
+      .main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 8px;
+        gap: 8px;
+      }
+      .warn {
+        height: 6%;
+        background: #11111b;
+        border-radius: 6px;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8em;
+        font-weight: bold;
+        border: 2px solid #313244;
+      }
+      .vision {
+        flex: 1;
+        background: #181825;
+        border-radius: 6px;
+        position: relative;
+        overflow: hidden;
+        border: 4px solid #313244;
+        transition: border-color 0.3s;
+      }
+      .vision.red {
+        border-color: #f38ba8;
+      }
+      .vision.yellow {
+        border-color: #f9e2af;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+      }
+      .info-overlay {
+        position: absolute;
+        bottom: 10px;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-around;
+        padding: 0 20px;
+        pointer-events: none;
+      }
+      .info-group {
+        display: flex;
+        gap: 10px;
+      }
+      .info {
+        background: #89b4fa;
+        color: #11111b;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 1.6em;
+        font-weight: bold;
+        text-align: center;
+      }
+      .info div {
+        font-size: 0.7em;
+        opacity: 0.8;
+      }
+      .graphs {
+        width: 20%;
+        background: #181825;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        overflow-y: auto;
+      }
+      .graph {
+        background: #11111b;
+        border-radius: 6px;
+        padding: 8px;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+      }
+      .graph h3 {
+        font-size: 1.4em;
+        margin-bottom: 4px;
+        color: #89b4fa;
+        display: flex;
+        justify-content: space-between;
+      }
+      .graph canvas {
+        flex: 1;
+        min-height: 80px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="main">
+        <div class="warn" id="warn">System Ready</div>
+        <div class="vision" id="vision">
+          <canvas id="canvas"></canvas>
+          <div class="info-overlay">
+            <div class="info-group">
+              <div class="info">
+                <div>Accel X</div>
+                <span id="ax">0.00</span>
+              </div>
+              <div class="info">
+                <div>Distance</div>
+                <span id="udist">--</span>
+              </div>
+              <div class="info">
+                <div>Visibility</div>
+                <span id="fog">--</span>
+              </div>
+            </div>
+            <div class="info-group">
+              <div class="info">
+                <div>Temp</div>
+                <span id="temp">--</span>
+              </div>
+              <div class="info">
+                <div>Humidity</div>
+                <span id="humid">--</span>
+              </div>
+              <div class="info">
+                <div>Status</div>
+                <span id="status">DISC</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="graphs">
+        <div class="graph">
+          <h3>Accel XYZ<span id="v1"></span></h3>
+          <canvas id="g1"></canvas>
+        </div>
+        <div class="graph">
+          <h3>Distance<span id="v2"></span></h3>
+          <canvas id="g2"></canvas>
+        </div>
+        <div class="graph">
+          <h3>Radar Dist<span id="v3"></span></h3>
+          <canvas id="g3"></canvas>
+        </div>
+        <div class="graph">
+          <h3>Temp/Humid<span id="v4"></span></h3>
+          <canvas id="g4"></canvas>
+        </div>
+        <div class="graph">
+          <h3>Fog Vis<span id="v5"></span></h3>
+          <canvas id="g5"></canvas>
+        </div>
+        <div class="graph">
+          <h3>Gyro XYZ<span id="v6"></span></h3>
+          <canvas id="g6"></canvas>
+        </div>
+      </div>
+    </div>
+    <script>
+      const CFG = {
+        VISION_ANGLE: 120,
+        VISION_RANGE: 500,
+        GRID_STEP: 100,
+        PROJECTION_TIME: 2,
+        FOG_HUMIDITY_THRESH: 55,
+        RADAR_DOT_SIZE: 12,
+        FONT_SCALE: 2,
+        WS_URL: "ws://" + location.hostname + ":81/",
+        RADAR_OUTSIDE_CONE: true,
+        COLLISION_THRESHOLD: 30,
+        CAUTION_THRESHOLD: 80,
+        RADAR_CLOSE_THRESHOLD: 100,
+        HISTORY_SIZES: {
+          accel: 100,
+          dist: 80,
+          radarDist: 60,
+          tempHumid: 120,
+          fog: 120,
+          gyro: 100,
+        },
+      };
+      const C = {
+        base: "#1e1e2e",
+        mantle: "#181825",
+        crust: "#11111b",
+        text: "#cdd6f4",
+        red: "#f38ba8",
+        green: "#a6e3a1",
+        blue: "#89b4fa",
+        yellow: "#f9e2af",
+        pink: "#f5c2e7",
+        teal: "#94e2d5",
+        overlay: "#313244",
+      };
+      let ws,
+        data = {},
+        history = {
+          accel: [[], [], []],
+          gyro: [[], [], []],
+          dist: [],
+          radarDist: [[], [], []],
+          tempHumid: [[], []],
+          fog: [],
+        };
+
+      function connect() {
+        ws = new WebSocket(CFG.WS_URL);
+        ws.onopen = () => {
+          document.getElementById("status").textContent = "CONN";
+        };
+        ws.onclose = () => {
+          document.getElementById("status").textContent = "DISC";
+          setTimeout(connect, 3000);
+        };
+        ws.onmessage = (e) => {
+          try {
+            data = JSON.parse(e.data);
+            updateUI();
+          } catch {}
+        };
+      }
+      function addHistory(a, v, m) {
+        a.push(v);
+        if (a.length > m) a.shift();
+      }
+      function updateUI() {
+        const d = data;
+        if (!d?.bmi160) return;
+        let warnMsg = "All Clear",
+          borderColor = "",
+          warnLevel = 0,
+          visionEl = document.getElementById("vision");
+        if (!d.si7021?.valid || !d.bmi160?.valid || !d.ultrasonic?.valid) {
+          warnMsg = "System Error";
+          warnLevel = 1;
+        }
+        const aMag = Math.hypot(d.bmi160.ax, d.bmi160.ay, d.bmi160.az);
+        if (aMag > 15) {
+          warnMsg = "High G-Force";
+          borderColor = "yellow";
+          warnLevel = 2;
+        }
+        const fogVis = d.si7021
+          ? CFG.VISION_RANGE *
+            (1 - d.si7021.humidity / 150) *
+            (0.8 + d.si7021.temp_c / 100)
+          : CFG.VISION_RANGE;
+        if (
+          d.si7021 &&
+          d.si7021.humidity > 90 &&
+          fogVis < 200 &&
+          warnLevel < 2
+        ) {
+          warnMsg = "Heavy Fog";
+          borderColor = "yellow";
+          warnLevel = 2;
+        }
+        if (d.radar?.targets) {
+          const close = d.radar.targets.filter(
+            (t) =>
+              t.valid && Math.hypot(t.x, t.y) / 10 < CFG.RADAR_CLOSE_THRESHOLD
+          );
+          if (close.length) {
+            borderColor = "red";
+            if (close.some((t) => t.v < -50)) {
+              warnMsg = "Rapid Approach";
+              warnLevel = 3;
+            } else if (close.length >= 2 && warnLevel < 3) {
+              warnMsg = "Multiple Targets";
+              warnLevel = 2;
+            }
+          }
+        }
+        if (d.ultrasonic?.valid) {
+          if (d.ultrasonic.distance < CFG.COLLISION_THRESHOLD) {
+            warnMsg = "Collision Imminent";
+            borderColor = "red";
+            warnLevel = 4;
+          } else if (
+            d.ultrasonic.distance < CFG.CAUTION_THRESHOLD &&
+            warnLevel < 3
+          ) {
+            warnMsg = "Close Obstacle";
+            borderColor = "yellow";
+            warnLevel = 2;
+          }
+        }
+        if (d.pir?.motion) borderColor = "red";
+        visionEl.className = "vision" + (borderColor ? " " + borderColor : "");
+        document.getElementById("warn").textContent = warnMsg;
+        document.getElementById("ax").textContent =
+          d.bmi160.ax.toFixed(2) + " m/s²";
+        document.getElementById("udist").textContent = d.ultrasonic?.valid
+          ? d.ultrasonic.distance.toFixed(0) + " cm"
+          : "Invalid";
+        document.getElementById("fog").textContent = fogVis.toFixed(0) + " cm";
+        document.getElementById("temp").textContent = d.si7021
+          ? d.si7021.temp_c.toFixed(1) + " °C"
+          : "--";
+        document.getElementById("humid").textContent = d.si7021
+          ? d.si7021.humidity.toFixed(0) + " %"
+          : "--";
+
+        addHistory(history.accel[0], d.bmi160.ax, CFG.HISTORY_SIZES.accel);
+        addHistory(history.accel[1], d.bmi160.ay, CFG.HISTORY_SIZES.accel);
+        addHistory(history.accel[2], d.bmi160.az, CFG.HISTORY_SIZES.accel);
+        addHistory(history.gyro[0], d.bmi160.gx, CFG.HISTORY_SIZES.gyro);
+        addHistory(history.gyro[1], d.bmi160.gy, CFG.HISTORY_SIZES.gyro);
+        addHistory(history.gyro[2], d.bmi160.gz, CFG.HISTORY_SIZES.gyro);
+        if (d.ultrasonic?.valid)
+          addHistory(
+            history.dist,
+            d.ultrasonic.distance,
+            CFG.HISTORY_SIZES.dist
+          );
+        if (d.radar?.targets)
+          d.radar.targets.forEach((t, i) =>
+            addHistory(
+              history.radarDist[i],
+              t.valid ? Math.hypot(t.x, t.y) / 10 : 0,
+              CFG.HISTORY_SIZES.radarDist
+            )
+          );
+        if (d.si7021) {
+          addHistory(
+            history.tempHumid[0],
+            d.si7021.temp_c,
+            CFG.HISTORY_SIZES.tempHumid
+          );
+          addHistory(
+            history.tempHumid[1],
+            d.si7021.humidity,
+            CFG.HISTORY_SIZES.tempHumid
+          );
+        }
+        addHistory(history.fog, fogVis, CFG.HISTORY_SIZES.fog);
+
+        drawVision();
+        drawGraphs();
+      }
+      function drawVision() {
+        const cv = document.getElementById("canvas"),
+          ctx = cv.getContext("2d");
+        cv.width = cv.offsetWidth;
+        cv.height = cv.offsetHeight;
+        const cx = cv.width / 2,
+          cy = cv.height * 0.85,
+          scale = (cv.height * 0.75) / CFG.VISION_RANGE,
+          fs = 12 * CFG.FONT_SCALE,
+          angle = (CFG.VISION_ANGLE * Math.PI) / 180;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.fillStyle = C.overlay + "33";
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(
+          0,
+          0,
+          CFG.VISION_RANGE * scale,
+          -angle / 2,
+          -Math.PI + angle / 2,
+          true
+        );
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = C.overlay;
+        ctx.lineWidth = 1;
+        for (let r = CFG.GRID_STEP; r <= CFG.VISION_RANGE; r += CFG.GRID_STEP) {
+          ctx.beginPath();
+          ctx.arc(0, 0, r * scale, -angle / 2, -Math.PI + angle / 2, true);
+          ctx.stroke();
+          ctx.fillStyle = C.text + "88";
+          ctx.font = fs + "px monospace";
+          ctx.fillText(r, -20, -r * scale + fs / 2);
+        }
+        if (data.si7021 && data.si7021.humidity > CFG.FOG_HUMIDITY_THRESH) {
+          const fogR =
+            Math.min(
+              CFG.VISION_RANGE *
+                (1 - data.si7021.humidity / 150) *
+                (0.8 + data.si7021.temp_c / 100),
+              CFG.VISION_RANGE
+            ) * scale;
+          ctx.strokeStyle = C.yellow;
+          ctx.lineWidth = 3;
+          ctx.setLineDash([8, 8]);
+          ctx.beginPath();
+          ctx.arc(0, 0, fogR, -angle / 2, -Math.PI + angle / 2, true);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = C.yellow;
+          ctx.font = fs + "px monospace";
+          ctx.fillText((fogR / scale).toFixed(0), -50, -fogR + fs / 2);
+        }
+        if (data.ultrasonic?.valid) {
+          const du =
+            Math.min(data.ultrasonic.distance, CFG.VISION_RANGE) * scale;
+          ctx.strokeStyle = C.teal;
+          ctx.lineWidth = 3;
+          ctx.setLineDash([8, 8]);
+          ctx.beginPath();
+          ctx.arc(0, 0, du, -angle / 2, -Math.PI + angle / 2, true);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = C.teal;
+          ctx.font = fs + "px monospace";
+          ctx.fillText(data.ultrasonic.distance.toFixed(0), 30, -du + fs / 2);
+        }
+        if (data.radar?.targets) {
+          data.radar.targets.forEach((t, i) => {
+            if (!t.valid) return;
+            const x = (t.x * scale) / 10,
+              y = (-t.y * scale) / 10,
+              dist = Math.hypot(t.x, t.y) / 10,
+              ang = Math.atan2(t.x, -t.y),
+              inCone =
+                CFG.RADAR_OUTSIDE_CONE ||
+                (ang >= -angle / 2 && ang <= angle / 2);
+            if (!inCone) return;
+            ctx.fillStyle = t.v < -10 ? C.red : t.v > 10 ? C.green : C.yellow;
+            ctx.beginPath();
+            ctx.arc(x, y, CFG.RADAR_DOT_SIZE, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = C.text;
+            ctx.font = fs + "px monospace";
+            ctx.fillText(
+              "T" + (i + 1) + ":" + dist.toFixed(0),
+              x + CFG.RADAR_DOT_SIZE + 4,
+              y + fs / 2
+            );
+          });
+        }
+        if (data.bmi160) {
+          const { ax = 0, ay = 0, az = 0 } = data.bmi160;
+
+          // Pick the dominant lateral component (|ax| vs |ay|), keep its sign
+          const ax_or_ay = Math.abs(ax) >= Math.abs(ay) ? ax : ay;
+
+          const vx = -ax_or_ay * CFG.PROJECTION_TIME * 150 * scale;
+          const vy = az * CFG.PROJECTION_TIME * 150 * scale;
+
+          ctx.strokeStyle = C.pink + "88";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(vx, vy);
+          ctx.stroke();
+          ctx.fillStyle = C.pink;
+          ctx.beginPath();
+          ctx.arc(vx, vy, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+      }
+      function drawGraph(id, arr, color, min, max, valId) {
+        const cv = document.getElementById(id);
+        if (!cv) return;
+        const ctx = cv.getContext("2d");
+        cv.width = cv.offsetWidth;
+        cv.height = cv.offsetHeight;
+        if (!arr || arr.length < 2) return;
+        ctx.fillStyle = C.crust;
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const step = cv.width / arr.length;
+        arr.forEach((v, i) => {
+          const x = i * step,
+            y = cv.height - ((v - min) / (max - min)) * cv.height;
+          i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        });
+        ctx.stroke();
+        if (valId && arr.length)
+          document.getElementById(valId).textContent =
+            arr[arr.length - 1].toFixed(1);
+      }
+      function drawMultiGraph(id, arrs, colors, labels, min, max, valId) {
+        const cv = document.getElementById(id);
+        if (!cv) return;
+        const ctx = cv.getContext("2d");
+        cv.width = cv.offsetWidth;
+        cv.height = cv.offsetHeight;
+        ctx.fillStyle = C.crust;
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        arrs.forEach((arr, idx) => {
+          if (!arr || arr.length < 2) return;
+          ctx.strokeStyle = colors[idx];
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          const step = cv.width / arr.length;
+          arr.forEach((v, i) => {
+            const x = i * step,
+              y = cv.height - ((v - min) / (max - min)) * cv.height;
+            i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          });
+          ctx.stroke();
+        });
+        if (valId) {
+          let txt = "";
+          arrs.forEach((a, i) => {
+            if (a.length)
+              txt +=
+                (i ? " " : "") + labels[i] + ":" + a[a.length - 1].toFixed(1);
+          });
+          document.getElementById(valId).textContent = txt;
+        }
+      }
+      function drawGraphs() {
+        drawMultiGraph(
+          "g1",
+          history.accel,
+          [C.red, C.green, C.blue],
+          ["X", "Y", "Z"],
+          -1,
+          1,
+          "v1"
+        );
+        drawGraph("g2", history.dist, C.teal, 0, 400, "v2");
+        drawMultiGraph(
+          "g3",
+          history.radarDist,
+          [C.red, C.green, C.blue],
+          ["T1", "T2", "T3"],
+          0,
+          300,
+          "v3"
+        );
+        drawMultiGraph(
+          "g4",
+          history.tempHumid,
+          [C.red, C.blue],
+          ["T", "H"],
+          0,
+          100,
+          "v4"
+        );
+        drawGraph("g5", history.fog, C.yellow, 0, 500, "v5");
+        drawMultiGraph(
+          "g6",
+          history.gyro,
+          [C.red, C.green, C.blue],
+          ["X", "Y", "Z"],
+          -50,
+          50,
+          "v6"
+        );
+      }
+      connect();
+      (function loop() {
+        requestAnimationFrame(loop);
+        drawVision();
+      })();
+    </script>
+  </body>
+</html>
+)rawliteral";
+
+#endif // WEB_INTERFACE_H

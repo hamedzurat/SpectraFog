@@ -13,7 +13,7 @@ bool checkI2CConnection(uint8_t address);
 
 void setup() {
   // Initialize I2C communication and Serial monitor
-  Wire.begin(21, 22);
+  Wire.begin(19, 23);
   Serial.begin(115200);
   delay(2000);  // Stabilization delay
 

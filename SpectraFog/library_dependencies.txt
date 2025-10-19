@@ -1,0 +1,121 @@
+===============================================
+ESP32 Multi-Sensor System - Required Libraries
+===============================================
+
+Install these libraries via Arduino IDE:
+Tools > Manage Libraries... (Ctrl+Shift+I)
+
+-----------------------------------------------
+1. ESP32 Board Support
+-----------------------------------------------
+   NOT a library - install via Boards Manager
+   
+   Steps:
+   1. File > Preferences
+   2. Additional Board Manager URLs:
+      https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+   3. Tools > Board > Boards Manager
+   4. Search "ESP32"
+   5. Install "esp32 by Espressif Systems"
+   
+   Tested with: v2.0.x or v3.0.x
+
+-----------------------------------------------
+2. WebSockets Library
+-----------------------------------------------
+   Name: WebSockets
+   Author: Markus Sattler
+   Version: 2.3.6 or newer
+   
+   Search in Library Manager: "WebSockets"
+   
+   GitHub: https://github.com/Links2004/arduinoWebSockets
+   
+   Used for: Real-time WebSocket server
+
+-----------------------------------------------
+3. ArduinoJson Library
+-----------------------------------------------
+   Name: ArduinoJson
+   Author: Benoit Blanchon
+   Version: 6.21.0 or newer (6.x series)
+   
+   Search in Library Manager: "ArduinoJson"
+   
+   GitHub: https://github.com/bblanchon/ArduinoJson
+   Website: https://arduinojson.org/
+   
+   Used for: JSON serialization of sensor data
+   
+   ⚠️ IMPORTANT: Use version 6.x, NOT 7.x
+                 (7.x has breaking API changes)
+
+-----------------------------------------------
+4. Built-in Libraries (No Installation Needed)
+-----------------------------------------------
+   These come with ESP32 board support:
+   
+   - WiFi.h          (ESP32 WiFi functions)
+   - Wire.h          (I2C communication)
+   - WebServer.h     (HTTP server)
+
+-----------------------------------------------
+Installation Commands (Arduino CLI)
+-----------------------------------------------
+If using Arduino CLI instead of IDE:
+
+arduino-cli lib install "WebSockets"
+arduino-cli lib install "ArduinoJson"
+arduino-cli core install esp32:esp32
+
+-----------------------------------------------
+PlatformIO Dependencies (platformio.ini)
+-----------------------------------------------
+If using PlatformIO instead of Arduino IDE:
+
+[env:esp32dev]
+platform = espressif32
+board = esp32dev
+framework = arduino
+lib_deps = 
+    links2004/WebSockets@^2.3.6
+    bblanchon/ArduinoJson@^6.21.0
+
+-----------------------------------------------
+Verification
+-----------------------------------------------
+After installation, verify by checking:
+Sketch > Include Library > [Library Name]
+
+Should see:
+- WebSockets
+- ArduinoJson
+- WiFi (built-in)
+- Wire (built-in)
+
+-----------------------------------------------
+Common Installation Issues
+-----------------------------------------------
+
+Problem: "Library not found"
+Solution: Close and reopen Arduino IDE after installing
+
+Problem: Compilation errors with ArduinoJson
+Solution: Ensure version 6.x, NOT 7.x
+
+Problem: WebSocketsServer not found
+Solution: Install "WebSockets" not "WebSocket" (note the 's')
+
+Problem: ESP32 board not showing in Tools > Board
+Solution: Restart Arduino IDE after installing board support
+
+-----------------------------------------------
+Library Sizes (for reference)
+-----------------------------------------------
+WebSockets:     ~200 KB
+ArduinoJson:    ~100 KB
+Total project:  ~500 KB compiled
+
+ESP32 has plenty of space (typically 4MB flash)
+
+===============================================
